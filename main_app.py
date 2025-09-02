@@ -27,16 +27,32 @@ from numpy import (
 )
 import pandas as pd
 
+from load_rpc import loadrpc
+
+pg.setConfigOption('foreground', 'k')
+
+# Needed for executable
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
 # Get the directory where the script is located
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Construct the relative paths to the UI files
-ui_file_path = os.path.join(script_dir, "ui_files", "mainwindow.ui")
-statistics_ui_file_path = os.path.join(script_dir, "ui_files", "statistics.ui")
+ui_file_path = resource_path(os.path.join("ui_files", "mainwindow.ui"))
+statistics_ui_file_path = resource_path(os.path.join("ui_files", "statistics.ui"))
 
 # Load the UI files
 uiclass, baseclass = pg.Qt.loadUiType(ui_file_path)
 statistics_uiclass, statistics_baseclass = pg.Qt.loadUiType(statistics_ui_file_path)
+image_file_path = resource_path(os.path.join("logos", "ucsd-logo-png-transparent.png"))
 
 
 class StatisticsWindow(QMainWindow, statistics_uiclass):
@@ -139,12 +155,16 @@ class PlotWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(title)
         self.plotWidget = GraphicsLayoutWidget()
+
+        # <<< ADD THIS LINE to set the background to white ('w')
+        self.plotWidget.setBackground('w')
+
         self.plotWidget.setMinimumSize(
             800, 600
-        )  # Set a minimum size for the plot widget
+        )
         self.setCentralWidget(self.plotWidget)
 
-        self.plots = {}  # Dictionary to store plots for different types
+        self.plots = {}
 
         # Define a blue line color
         line_color = (0, 0, 255)  # Blue
@@ -158,21 +178,21 @@ class PlotWindow(QMainWindow):
                 self.plots["Time History"] = self.time_history_plot.plot(
                     pen=mkPen(color=line_color)
                 )
-                self.time_history_plot.showGrid(x=True, y=True)  # Show gridlines
-                self.time_history_plot.setLabel("left", "Amplitude (g)")  # Y-axis label
-                self.time_history_plot.setLabel("bottom", "Time (s)")  # X-axis label
+                self.time_history_plot.showGrid(x=True, y=True)
+                self.time_history_plot.setLabel("left", "Amplitude (g)")
+                self.time_history_plot.setLabel("bottom", "Time (s)")
             elif plot_type == "FFT":
                 self.fft_plot = self.plotWidget.addPlot(title="FFT", row=2, col=1)
                 self.plots["FFT"] = self.fft_plot.plot(pen=mkPen(color=line_color))
-                self.fft_plot.showGrid(x=True, y=True)  # Show gridlines
-                self.fft_plot.setLabel("left", "Amplitude (g)")  # Y-axis label
-                self.fft_plot.setLabel("bottom", "Frequency (Hz)")  # X-axis label
+                self.fft_plot.showGrid(x=True, y=True)
+                self.fft_plot.setLabel("left", "Amplitude (g)")
+                self.fft_plot.setLabel("bottom", "Frequency (Hz)")
             elif plot_type == "ASD":
                 self.asd_plot = self.plotWidget.addPlot(title="ASD", row=3, col=1)
                 self.plots["ASD"] = self.asd_plot.plot(pen=mkPen(color=line_color))
-                self.asd_plot.showGrid(x=True, y=True)  # Show gridlines
-                self.asd_plot.setLabel("left", "Amplitude (dB)")  # Y-axis label
-                self.asd_plot.setLabel("bottom", "Frequency (Hz)")  # X-axis label
+                self.asd_plot.showGrid(x=True, y=True)
+                self.asd_plot.setLabel("left", "Amplitude (dB)")
+                self.asd_plot.setLabel("bottom", "Frequency (Hz)")
 
     def update_plot_data(self, x_data, y_data, plot_type):
         if plot_type in self.plots:
@@ -183,249 +203,226 @@ class MainWindow(QMainWindow, uiclass):
     def __init__(self):
         super().__init__()
         self.setupUi(self)
-        # Connect file button signal to slot
         self.fileButton.clicked.connect(self.openFileDialog)
-        # Access the checkbox and spinbox widgets
-        self.checkboxTimeCheck = self.findChild(QCheckBox, "checkBox_TimeCheck")
+
+        self.checkBox_DOFX = self.findChild(QCheckBox, "checkBox_DOFX")
+        self.checkBox_DOFY = self.findChild(QCheckBox, "checkBox_DOFY")
+        self.checkBox_DOFZ = self.findChild(QCheckBox, "checkBox_DOFZ")
+        self.checkBox_DOFRx = self.findChild(QCheckBox, "checkBox_DOFRx")
+        self.checkBox_DOFRy = self.findChild(QCheckBox, "checkBox_DOFRy")
+        self.checkBox_DOFRz = self.findChild(QCheckBox, "checkBox_DOFRz")
+        self.dof_checkboxes = [
+            self.checkBox_DOFX, self.checkBox_DOFY, self.checkBox_DOFZ,
+            self.checkBox_DOFRx, self.checkBox_DOFRy, self.checkBox_DOFRz
+        ]
+
         self.spinboxSampleRate = self.findChild(QSpinBox, "spinBox_SampleRate")
-        # Connect the "Generate" button to the generatePlots function
         self.generateButton.clicked.connect(self.generatePlots)
-        # Create a list to store references to plot windows - ensures plot windows don't close
-        # immediately after falling out of scope
         self.plot_windows = []
-        # Connect the "Statistics" button to the openStatisticsWindow function
         self.pushButton_Stats.clicked.connect(self.openStatisticsWindow)
-        self.loaded_data = None  # Store the loaded data in this variable
+        self.loaded_data = None
 
-        # Load the logo image and set it as a pixmap for a QLabel
         self.logo_label = QLabel(self)
-        self.logo_label.setGeometry(
-            0, 0, 90, 90
-        )  # Adjust the size and position as needed
-        # Construct the relative path to the image file (replace 'logos' and 'ucsd-logo-png-transparent.png' with your actual folder and file names)
-        image_file_path = os.path.join(
-            script_dir, "logos", "ucsd-logo-png-transparent.png"
-        )
-
-        # Load the image using the relative path
+        self.logo_label.setGeometry(0, 0, 90, 90)
+        image_file_path = resource_path(os.path.join("logos", "ucsd-logo-png-transparent.png"))
         pixmap = QPixmap(image_file_path)
         self.logo_label.setPixmap(pixmap)
 
-        # Place the logo at the bottom right corner
         window_width = self.width()
         window_height = self.height()
         logo_width = self.logo_label.width()
         logo_height = self.logo_label.height()
         self.logo_label.move(window_width - logo_width, window_height - logo_height)
-
-        # Set fixed window size
         self.setFixedSize(475, 315)
 
-    # Open the statistics window
+    def update_dof_checkboxes(self, num_columns):
+        """Enable or disable DOF checkboxes based on the number of data columns."""
+        if num_columns == 1:
+            # Single DOF file loaded: Disable and uncheck ALL boxes.
+            for checkbox in self.dof_checkboxes:
+                checkbox.setEnabled(False)
+                checkbox.setChecked(False)
+        else:
+            # Multi-DOF file loaded: Re-enable all checkboxes.
+            for checkbox in self.dof_checkboxes:
+                checkbox.setEnabled(True)
+
+    def openFileDialog(self):
+        file_filter = "All Supported Files (*.txt *.tim);;Text Files (*.txt);;Binary RPC Files (*.tim)"
+        fileName, _ = QFileDialog.getOpenFileName(self, "Open File", "", file_filter)
+
+        if fileName:
+            self.filePath.setText(fileName)
+            if fileName.lower().endswith(".txt"):
+                self.loaded_data = self.load_data_from_text_file(fileName)
+            elif fileName.lower().endswith(".tim"):
+                self.loaded_data = self.load_data_from_rpc_file(fileName)
+            else:
+                self.showErrorMessage("Unsupported file type selected.")
+                self.loaded_data = None
+
+            if self.loaded_data is not None:
+                self.update_dof_checkboxes(self.loaded_data.shape[1])
+            else:
+                # If loading failed, reset checkboxes to enabled state
+                self.update_dof_checkboxes(6)
+
+    def load_data_from_rpc_file(self, file_path):
+        try:
+            rpc_data = loadrpc(file_path)
+            if rpc_data['x'] is None or rpc_data['x'].size == 0:
+                self.showErrorMessage("Failed to load data from RPC file.")
+                return None
+            if rpc_data.get('delta_t') and rpc_data['delta_t'] > 0:
+                sample_rate = 1.0 / rpc_data['delta_t']
+                self.spinboxSampleRate.setValue(int(round(sample_rate)))
+
+            data_array = rpc_data['x']
+            num_channels = data_array.shape[1]
+            col_names = ["X", "Y", "Z", "Rx", "Ry", "Rz"]
+
+            if num_channels <= len(col_names):
+                df = pd.DataFrame(data_array, columns=col_names[:num_channels])
+            else:
+                cols = col_names + [f"Ch{i + 7}" for i in range(num_channels - 6)]
+                df = pd.DataFrame(data_array, columns=cols)
+            return df
+        except Exception as e:
+            self.showErrorMessage(f"An error occurred while reading the RPC file: {e}")
+            return None
+
+    def load_data_from_text_file(self, file_path):
+        try:
+            header_rows_to_skip = 0
+            with open(file_path, 'r') as f:
+                for i, line in enumerate(f):
+                    if i >= 10: break
+                    try:
+                        line.strip().replace(',', ' ').split()[0]
+                        float(line.strip().replace(',', ' ').split()[0])
+                        break
+                    except (ValueError, IndexError):
+                        header_rows_to_skip += 1
+
+            data = pd.read_csv(
+                file_path, header=None, engine="python",
+                delim_whitespace=True, skiprows=header_rows_to_skip
+            )
+        except Exception as e:
+            self.showErrorMessage(f"Error reading text file: {e}")
+            return None
+
+        num_columns = len(data.columns)
+        if num_columns == 1:
+            col_names = ["X"]
+        elif num_columns == 6:
+            col_names = ["X", "Y", "Z", "Rx", "Ry", "Rz"]
+        else:
+            self.showErrorMessage(f"Text file has {num_columns} columns. Please use a file with 1 or 6 columns.")
+            self.filePath.clear()
+            return None
+
+        data.columns = col_names
+        return data
+
+    def generatePlots(self):
+        if self.loaded_data is None:
+            self.showErrorMessage("Please select a file.")
+            return
+        if self.spinboxSampleRate.value() == 0:
+            self.showErrorMessage("Set a nonzero Sample Rate.")
+            return
+
+        self.selected_plot_types = []
+        if self.checkBox_Time.isChecked(): self.selected_plot_types.append("Time History")
+        if self.checkBox_FFT.isChecked(): self.selected_plot_types.append("FFT")
+        if self.checkBox_ASD.isChecked(): self.selected_plot_types.append("ASD")
+
+        if not self.selected_plot_types:
+            self.showErrorMessage("Select at least one of Time History, FFT, or ASD checkboxes.")
+            return
+
+        num_columns = self.loaded_data.shape[1]
+
+        if num_columns == 1:
+            # For a single-DOF file, we don't need to check the boxes.
+            # We plot the one column that exists (internally named 'X').
+            self.selected_degree_of_freedom = ['X']
+        else:
+            # For multi-DOF files, check which boxes the user selected.
+            self.selected_degree_of_freedom = []
+            if self.checkBox_DOFX.isChecked(): self.selected_degree_of_freedom.append("X")
+            if self.checkBox_DOFY.isChecked(): self.selected_degree_of_freedom.append("Y")
+            if self.checkBox_DOFZ.isChecked(): self.selected_degree_of_freedom.append("Z")
+            if self.checkBox_DOFRx.isChecked(): self.selected_degree_of_freedom.append("Rx")
+            if self.checkBox_DOFRy.isChecked(): self.selected_degree_of_freedom.append("Ry")
+            if self.checkBox_DOFRz.isChecked(): self.selected_degree_of_freedom.append("Rz")
+
+            if not self.selected_degree_of_freedom:
+                self.showErrorMessage("Select at least one of the DOF checkboxes.")
+                return
+
+        for dof in self.selected_degree_of_freedom:
+            window_title = "DOF Plots" if num_columns == 1 else f"{dof} Plots"
+
+            plot_window = PlotWindow(window_title, self.selected_plot_types)
+            for plot_type in self.selected_plot_types:
+                x_data, y_data = self.get_plot_data(self.loaded_data, dof, plot_type)
+                plot_window.update_plot_data(x_data, y_data, plot_type)
+            plot_window.show()
+            self.plot_windows.append(plot_window)
+
     def openStatisticsWindow(self):
         if not self.filePath.text():
             self.showErrorMessage("Please select a file.")
             return
         self.statistics_window = StatisticsWindow()
-        # Pass the sample rate and file length as arguments
         sample_rate = self.spinboxSampleRate.value()
         if sample_rate == 0:
             self.showErrorMessage("Please set a nonzero sample rate.")
             return
-        file_length = self.loaded_data.shape[0]  # Calculate or obtain the file length
+        file_length = self.loaded_data.shape[0]
         self.statistics_window.updateFileDuration(sample_rate, file_length)
         self.statistics_window.populateStatsTable(self.loaded_data, sample_rate)
-        # Lock the statistics window
         self.statistics_window.lockWindow()
         self.statistics_window.show()
 
-    # Select time history file
-    def openFileDialog(self):
-        fileName, _ = QFileDialog.getOpenFileName(
-            self, "Open File", "", "Text Files (*.txt)"
-        )
-        if fileName:
-            self.filePath.setText(fileName)
-            # Load data from the file using pandas and store it in self.loaded_data
-            self.loaded_data = self.load_data_from_file(fileName)
-
-    # Generate plots based on the selected options
-    def generatePlots(self):
-        # Check if a file is selected
-        if self.loaded_data is None:
-            self.showErrorMessage("Please select a file.")
-            return
-        # Check if at least one of Time History, FFT, or ASD checkboxes is checked
-        if not (
-            self.checkBox_Time.isChecked()
-            or self.checkBox_FFT.isChecked()
-            or self.checkBox_ASD.isChecked()
-        ):
-            self.showErrorMessage(
-                "Select at least one of Time History, FFT, or ASD checkboxes."
-            )
-            return
-
-        # Check if at least one of the axes checkboxes is checked
-        if not (
-            self.checkBox_DOFX.isChecked()
-            or self.checkBox_DOFY.isChecked()
-            or self.checkBox_DOFZ.isChecked()
-            or self.checkBox_DOFRx.isChecked()
-            or self.checkBox_DOFRy.isChecked()
-            or self.checkBox_DOFRz.isChecked()
-        ):
-            self.showErrorMessage("Select at least one of the DOF checkboxes.")
-            return
-        # Check if the Sample Rate spinbox has a nonzero value OR if there is a checkbox to check if a user-selected file has a time column
-        if self.spinboxSampleRate.value() == 0:
-            self.showErrorMessage("Set a nonzero Sample Rate.")
-            return
-
-        # Check which degree of freedom checkboxes are selected
-        self.selected_degree_of_freedom = []
-        if self.checkBox_DOFX.isChecked():
-            self.selected_degree_of_freedom.append("X")
-        if self.checkBox_DOFY.isChecked():
-            self.selected_degree_of_freedom.append("Y")
-        if self.checkBox_DOFZ.isChecked():
-            self.selected_degree_of_freedom.append("Z")
-        if self.checkBox_DOFRx.isChecked():
-            self.selected_degree_of_freedom.append("Rx")
-        if self.checkBox_DOFRy.isChecked():
-            self.selected_degree_of_freedom.append("Ry")
-        if self.checkBox_DOFRz.isChecked():
-            self.selected_degree_of_freedom.append("Rz")
-
-        # Check which plot type checkboxes are selected
-        self.selected_plot_types = []
-        if self.checkBox_Time.isChecked():
-            self.selected_plot_types.append("Time History")
-        if self.checkBox_FFT.isChecked():
-            self.selected_plot_types.append("FFT")
-        if self.checkBox_ASD.isChecked():
-            self.selected_plot_types.append("ASD")
-
-        # Create a separate window for each degree of freedom
-        for dof in self.selected_degree_of_freedom:
-            plot_window = PlotWindow(f"{dof} Plots", self.selected_plot_types)
-
-            # Create and add the plots to the PlotWidget
-            for plot_type in self.selected_plot_types:
-                x_data, y_data = self.get_plot_data(self.loaded_data, dof, plot_type)
-                plot_window.update_plot_data(x_data, y_data, plot_type)
-
-            plot_window.show()
-            self.plot_windows.append(plot_window)  # Store the reference
-
-    # Retrieve data from the file using pandas
-    # Determine delimiter automatically
-    # Determine if there is a time column and column labels
-    def load_data_from_file(self, file_path):
-        # Load data from the text file using pandas and automatically detect the delimiter
-        try:
-            data = pd.read_csv(file_path, delimiter=None, header=None, engine="python")
-        except pd.errors.EmptyDataError:
-            self.showErrorMessage("The selected file is empty.")
-            return None
-        except pd.errors.ParserError:
-            self.showErrorMessage(
-                "Unable to determine the delimiter in the selected file."
-            )
-            return None
-
-        # Determine the most likely delimiter based on the number of columns
-        possible_delimiters = [",", "\t", " "]
-
-        delimiter_counts = {}
-        for delimiter in possible_delimiters:
-            count = 0
-            for col in data.columns:
-                if data[col].str.contains(delimiter).any():
-                    count += 1
-            delimiter_counts[delimiter] = count
-
-        # Sort delimiters by column count in descending order
-        sorted_delimiters = sorted(
-            delimiter_counts, key=delimiter_counts.get, reverse=True
-        )
-
-        # Select the delimiter with the highest count
-        selected_delimiter = sorted_delimiters[0]
-
-        # Use the selected delimiter to load the data
-        data = pd.read_csv(file_path, delimiter=selected_delimiter, header=None)
-        num_columns = len(data.columns)
-        if num_columns != 6:
-            self.showErrorMessage("The selected file does not have 6 columns.")
-            self.filePath.clear()  # Clear the file_path text field
-            return None
-        col_names = ["X", "Y", "Z", "Rx", "Ry", "Rz"]
-        data.columns = col_names
-
-        return data
-
-    # Get the data to plot based on the selected plot type
     def get_plot_data(self, data, dof, plot_type):
         if plot_type == "FFT":
             sample_rate = self.spinboxSampleRate.value()
             fft_result = fft.fft(data[dof])
-            # Implement logic for FFT data (replace with your own)
-            x_data = fft.fftfreq(
-                len(data[dof]), 1 / sample_rate
-            )  # Calculate frequency data
+            x_data = fft.fftfreq(len(data[dof]), 1 / sample_rate)
             frequency_axis = fft.fftfreq(len(data[dof]), 1 / sample_rate)
-            x_data = frequency_axis[
-                : len(frequency_axis) // 2
-            ]  # Get half of the frequency data
-            y_data = (
-                2.0 / len(fft_result) * abs(fft_result[: len(frequency_axis) // 2])
-            )  # Calculate amplitude data
-
+            x_data = frequency_axis[: len(frequency_axis) // 2]
+            y_data = (2.0 / len(fft_result)) * abs(fft_result[: len(frequency_axis) // 2])
         elif plot_type == "Time History":
-            # Implement logic for Time History data (replace with your own)
             sample_rate = self.spinboxSampleRate.value()
-            x_data = data.index / sample_rate  # Calculate time based on sample rate
+            x_data = data.index / sample_rate
             y_data = data[dof]
         elif plot_type == "ASD":
-            # Calculate PSD using NumPy
-            fs = self.spinboxSampleRate.value()  # Sample rate
+            fs = self.spinboxSampleRate.value()
             n = len(data[dof])
             freq = fft.fftfreq(n, 1 / fs)
             fft_result = fft.fft(data[dof])
             psd = (1 / (fs * n)) * abs(fft_result) ** 2
             one_sided_psd = 2 * psd[: n // 2]
             x_data = freq[: n // 2]
-
-            # Handle zero values in one_sided_psd
             one_sided_psd = where(one_sided_psd == 0, 1e-10, one_sided_psd)
-
-            y_data = 10 * log10(one_sided_psd)  # Convert to dB
-            # Apply moving average to smooth the data
+            y_data = 10 * log10(one_sided_psd)
             y_data = self.moving_average(y_data, 10)
-
-            # Trim y_data if needed to match x_data's length
-            # Trim or pad y_data to match the length of x_data
             if len(y_data) < len(x_data):
-                # Pad y_data with zeros at the beginning to match the length of x_data
                 y_data = concatenate((zeros(len(x_data) - len(y_data)), y_data))
             elif len(y_data) > len(x_data):
-                # Trim y_data to match the length of x_data
-                y_data = y_data[len(y_data) - len(x_data) :]
-
+                y_data = y_data[len(y_data) - len(x_data):]
         else:
-            x_data = []
-            y_data = []
-
+            x_data, y_data = [], []
         return x_data, y_data
 
-    # Add the moving_average function outside the class
     def moving_average(self, data, window_size):
         cum_sum = cumsum(data)
         cum_sum[window_size:] = cum_sum[window_size:] - cum_sum[:-window_size]
-        return cum_sum[window_size - 1 :] / window_size
+        return cum_sum[window_size - 1:] / window_size
 
-    # Show an error message box to guide the user
     def showErrorMessage(self, message):
         msgBox = QMessageBox()
         msgBox.setIcon(QMessageBox.Warning)
