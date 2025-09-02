@@ -7,7 +7,7 @@ Seismic Analyzer is a Python application designed to process text files containi
 1. **Input File Format:**
 
    - Text file with 6 columns and no headers.  
-     
+   - RPC Binary Files (.tim) used with MTS StexPro & 469D.  
 
    - Each line in the input file represents seismic data with 6 columns, in the following order:
      - X: X-coordinate
